@@ -32,6 +32,7 @@ static int load_payload_matches(const char *path, PayloadMatch **matches_out,
 typedef struct {
 	char field[32];
 	char payload[SIGNATURE_LEN];
+	size_t count;
 } PayloadSignature;
 
 static PayloadSignature baseline_signatures[MAX_SIGNATURES];
@@ -573,9 +574,8 @@ static int signature_exists(const PayloadSignature signatures[], size_t count,
 static void add_payload_values(PayloadSignature signatures[], size_t *count,
 			       const char *field, const char *value)
 {
-	if (value == NULL || value[0] == '\0' || strcmp(value, "NA") == 0) {
+	if (value == NULL || value[0] == '\0' || strcmp(value, "NA") == 0)
 		return;
-	}
 
 	char copy[SIGNATURE_LEN];
 
@@ -586,24 +586,57 @@ static void add_payload_values(PayloadSignature signatures[], size_t *count,
 
 	snprintf(copy, sizeof(copy), "%s", value);
 
+	char *tokens[SIGNATURE_LEN / 2];
+	size_t token_count = 0;
 	char *saveptr = NULL;
 	char *payload = strtok_r(copy, ";", &saveptr);
 
 	while (payload != NULL) {
-		if (payload[0] != '\0' &&
-		    !signature_exists(signatures, *count, field, payload)) {
-			if (*count >= MAX_SIGNATURES) {
-				fprintf(stderr,
-					"Warning: signature limit reached\n");
-				return;
+		if (payload[0] != '\0') {
+			int duplicate = 0;
+
+			for (size_t i = 0; i < token_count; i++) {
+				if (strcmp(tokens[i], payload) == 0) {
+					duplicate = 1;
+					break;
+				}
 			}
 
-			snprintf(signatures[*count].field,
-				 sizeof(signatures[*count].field), "%s", field);
-			snprintf(signatures[*count].payload,
-				 sizeof(signatures[*count].payload), "%s",
-				 payload);
-			(*count)++;
+			if (!duplicate) {
+				if (token_count <
+				    sizeof(tokens) / sizeof(tokens[0]))
+					tokens[token_count++] = payload;
+
+				if (signature_exists(signatures, *count, field,
+						     payload)) {
+					for (size_t i = 0; i < *count; i++) {
+						if (strcmp(signatures[i].field,
+							   field) == 0 &&
+						    strcmp(signatures[i].payload,
+							   payload) == 0) {
+							signatures[i].count++;
+							break;
+						}
+					}
+				} else {
+					if (*count >= MAX_SIGNATURES) {
+						fprintf(stderr,
+							"Warning: signature limit reached\n");
+						return;
+					}
+
+					snprintf(
+						signatures[*count].field,
+						sizeof(signatures[*count].field),
+						"%s", field);
+					snprintf(signatures[*count].payload,
+						 sizeof(signatures[*count]
+								.payload),
+						 "%s", payload);
+					signatures[*count].count = 1;
+					(*count)++;
+				}
+			}
 		}
 
 		payload = strtok_r(NULL, ";", &saveptr);
@@ -752,8 +785,11 @@ static int command_correlate(const char *path)
 
 static int load_address_signatures(const char *input_path, const char *address,
 				   PayloadSignature signatures[],
-				   size_t *signature_count)
+				   size_t *signature_count, size_t *samples_out)
 {
+	*samples_out = 0;
+	*signature_count = 0;
+
 	FILE *file = fopen(input_path, "r");
 
 	if (file == NULL) {
@@ -801,6 +837,7 @@ static int load_address_signatures(const char *input_path, const char *address,
 		}
 
 		found_payload_columns = 1;
+		(*samples_out)++;
 
 		add_payload_values(signatures, signature_count,
 				   "manufacturer_hex", columns[6]);
@@ -833,7 +870,7 @@ cleanup:
 
 static int load_payload_baseline(const char *path,
 				 PayloadSignature signatures[],
-				 size_t *signature_count)
+				 size_t *signature_count, size_t *samples_out)
 {
 	FILE *file = fopen(path, "r");
 
@@ -842,39 +879,146 @@ static int load_payload_baseline(const char *path,
 		return -1;
 	}
 
+	*signature_count = 0;
+	*samples_out = 0;
+
 	char *line = NULL;
 	size_t capacity = 0;
 	ssize_t length;
+	int found_samples = 0;
+	int found_header = 0;
+	int result = -1;
+	size_t line_number = 0;
 
 	while ((length = getline(&line, &capacity, file)) != -1) {
 		(void)length;
+		line_number++;
 
-		char *columns[2];
-		size_t count = split_tsv(line, columns, 2);
+		static const char header[] = "# RogueNet payload baseline v2";
+		size_t header_length = sizeof(header) - 1;
 
-		if (count < 2) {
+		if (strncmp(line, header, header_length) == 0) {
+			if ((line[header_length] != '\n' &&
+			     line[header_length] != '\r' &&
+			     line[header_length] != '\0') ||
+			    found_header) {
+				fprintf(stderr,
+					"Invalid payload baseline header in %s\n",
+					path);
+				goto cleanup;
+			}
+
+			found_header = 1;
 			continue;
 		}
 
-		if (strcmp(columns[0], "manufacturer_hex") != 0 &&
-		    strcmp(columns[0], "service_data_hex") != 0) {
+		if (strncmp(line, "# samples=", 10) == 0) {
+			if (found_samples) {
+				fprintf(stderr,
+					"Duplicate sample count in %s\n", path);
+				goto cleanup;
+			}
+
+			char *end = NULL;
+			unsigned long long value =
+				strtoull(line + 10, &end, 10);
+
+			if (end == line + 10 ||
+			    (*end != '\n' && *end != '\r' && *end != '\0') ||
+			    value == 0 ||
+			    value > (unsigned long long)(size_t)-1) {
+				fprintf(stderr, "Invalid sample count in %s\n",
+					path);
+				goto cleanup;
+			}
+
+			*samples_out = (size_t)value;
+			found_samples = 1;
 			continue;
 		}
 
-		add_payload_values(signatures, signature_count, columns[0],
-				   columns[1]);
+		if (line[0] == '#')
+			continue;
+
+		char *columns[3];
+		size_t columns_count = split_tsv(line, columns, 3);
+
+		if (columns_count == 0)
+			continue;
+
+		if (strcmp(columns[0], "field") == 0)
+			continue;
+
+		if (columns_count != 3 ||
+		    (strcmp(columns[0], "manufacturer_hex") != 0 &&
+		     strcmp(columns[0], "service_data_hex") != 0)) {
+			fprintf(stderr,
+				"Malformed payload baseline row %zu in %s\n",
+				line_number, path);
+			goto cleanup;
+		}
+
+		char *end = NULL;
+		unsigned long long value = strtoull(columns[2], &end, 10);
+
+		if (end == columns[2] || *end != '\0' || value == 0 ||
+		    value > (unsigned long long)(size_t)-1) {
+			fprintf(stderr,
+				"Invalid payload count on row %zu in %s\n",
+				line_number, path);
+			goto cleanup;
+		}
+
+		if (*signature_count >= MAX_SIGNATURES) {
+			fprintf(stderr, "Too many payload signatures in %s\n",
+				path);
+			goto cleanup;
+		}
+
+		if (signature_exists(signatures, *signature_count, columns[0],
+				     columns[1])) {
+			fprintf(stderr,
+				"Duplicate payload signature on row %zu in %s\n",
+				line_number, path);
+			goto cleanup;
+		}
+
+		PayloadSignature *signature = &signatures[(*signature_count)];
+
+		snprintf(signature->field, sizeof(signature->field), "%s",
+			 columns[0]);
+		snprintf(signature->payload, sizeof(signature->payload), "%s",
+			 columns[1]);
+		signature->count = (size_t)value;
+
+		(*signature_count)++;
 	}
-
-	free(line);
 
 	if (ferror(file)) {
 		perror(path);
-		fclose(file);
-		return -1;
+		goto cleanup;
 	}
 
+	if (!found_header || !found_samples) {
+		fprintf(stderr,
+			"Unsupported or incomplete payload baseline: %s "
+			"(expected v2 format and sample count)\n",
+			path);
+		goto cleanup;
+	}
+
+	if (*signature_count == 0) {
+		fprintf(stderr, "Payload baseline contains no signatures: %s\n",
+			path);
+		goto cleanup;
+	}
+
+	result = 0;
+
+cleanup:
+	free(line);
 	fclose(file);
-	return 0;
+	return result;
 }
 
 static int require_min_samples(const char *input_path, const char *address)
@@ -910,9 +1054,10 @@ static int command_payload_baseline(const char *input_path, const char *address,
 		return 1;
 
 	size_t count = 0;
+	size_t samples = 0;
 
 	if (load_address_signatures(input_path, address, observed_signatures,
-				    &count) != 0) {
+				    &count, &samples) != 0) {
 		return 1;
 	}
 
@@ -929,13 +1074,15 @@ static int command_payload_baseline(const char *input_path, const char *address,
 		return 1;
 	}
 
-	fprintf(file, "# RogueNet payload baseline v1\n");
+	fprintf(file, "# RogueNet payload baseline v2\n");
 	fprintf(file, "# address=%s\n", address);
-	fprintf(file, "# field\tpayload\n");
+	fprintf(file, "# samples=%zu\n", samples);
+	fprintf(file, "# field\tpayload\tcount\n");
 
 	for (size_t i = 0; i < count; i++) {
-		if (fprintf(file, "%s\t%s\n", observed_signatures[i].field,
-			    observed_signatures[i].payload) < 0) {
+		if (fprintf(file, "%s\t%s\t%zu\n", observed_signatures[i].field,
+			    observed_signatures[i].payload,
+			    observed_signatures[i].count) < 0) {
 			perror("Writing baseline");
 			fclose(file);
 			return 1;
@@ -963,35 +1110,76 @@ static int compare_payloads(const char *input_path, const char *address,
 
 	size_t baseline_count = 0;
 	size_t observed_count = 0;
+	size_t baseline_samples = 0;
+	size_t observed_samples = 0;
 
 	if (load_payload_baseline(baseline_path, baseline_signatures,
-				  &baseline_count) != 0)
+				  &baseline_count, &baseline_samples) != 0)
 		return -1;
 
 	if (load_address_signatures(input_path, address, observed_signatures,
-				    &observed_count) != 0)
+				    &observed_count, &observed_samples) != 0)
 		return -1;
 
-	if (baseline_count == 0 || observed_count == 0) {
-		fprintf(stderr, "Baseline or current payload set is empty\n");
+	if (baseline_count == 0 || observed_count == 0 ||
+	    baseline_samples == 0 || observed_samples == 0) {
+		fprintf(stderr, "Baseline or current payload data is empty\n");
 		return -1;
 	}
 
 	size_t new_count = 0;
 	size_t missing_count = 0;
+	size_t changed_count = 0;
+	const double frequency_threshold = 0.20;
 
 	printf("Payload comparison\n");
 	printf("Address: %s\n", address);
+	printf("Baseline samples: %zu\n", baseline_samples);
+	printf("Current samples:  %zu\n", observed_samples);
 	printf("Baseline signatures: %zu\n", baseline_count);
-	printf("Current signatures: %zu\n\n", observed_count);
+	printf("Current signatures:  %zu\n\n", observed_count);
 
 	for (size_t i = 0; i < observed_count; i++) {
+		PayloadSignature *observed = &observed_signatures[i];
+
 		if (!signature_exists(baseline_signatures, baseline_count,
-				      observed_signatures[i].field,
-				      observed_signatures[i].payload)) {
-			printf("NEW     %s: %s\n", observed_signatures[i].field,
-			       observed_signatures[i].payload);
+				      observed->field, observed->payload)) {
+			printf("NEW     %s: %s (count=%zu, %.1f%%)\n",
+			       observed->field, observed->payload,
+			       observed->count,
+			       100.0 * (double)observed->count /
+				       (double)observed_samples);
 			new_count++;
+			continue;
+		}
+
+		for (size_t j = 0; j < baseline_count; j++) {
+			PayloadSignature *baseline = &baseline_signatures[j];
+
+			if (strcmp(baseline->field, observed->field) != 0 ||
+			    strcmp(baseline->payload, observed->payload) != 0)
+				continue;
+
+			double baseline_frequency = (double)baseline->count /
+						    (double)baseline_samples;
+			double observed_frequency = (double)observed->count /
+						    (double)observed_samples;
+			double difference =
+				observed_frequency - baseline_frequency;
+
+			if (difference < 0.0)
+				difference = -difference;
+
+			if (difference > frequency_threshold) {
+				printf("CHANGED %s: %s "
+				       "(baseline=%.1f%%, current=%.1f%%)\n",
+				       observed->field, observed->payload,
+				       100.0 * baseline_frequency,
+				       100.0 * observed_frequency);
+				changed_count++;
+			}
+
+			break;
 		}
 	}
 
@@ -999,19 +1187,25 @@ static int compare_payloads(const char *input_path, const char *address,
 		if (!signature_exists(observed_signatures, observed_count,
 				      baseline_signatures[i].field,
 				      baseline_signatures[i].payload)) {
-			printf("MISSING %s: %s\n", baseline_signatures[i].field,
-			       baseline_signatures[i].payload);
+			printf("MISSING %s: %s (baseline count=%zu, %.1f%%)\n",
+			       baseline_signatures[i].field,
+			       baseline_signatures[i].payload,
+			       baseline_signatures[i].count,
+			       100.0 * (double)baseline_signatures[i].count /
+				       (double)baseline_samples);
 			missing_count++;
 		}
 	}
 
-	if (new_count == 0 && missing_count == 0)
-		printf("No payload-set differences found.\n");
+	if (new_count == 0 && missing_count == 0 && changed_count == 0)
+		printf("No significant payload differences found.\n");
 
 	printf("\nNew signatures: %zu\n", new_count);
 	printf("Missing signatures: %zu\n", missing_count);
+	printf("Frequency changes: %zu\n", changed_count);
 
-	return (new_count > 0 || missing_count > 0) ? 1 : 0;
+	return (new_count > 0 || missing_count > 0 || changed_count > 0) ? 1 :
+									   0;
 }
 
 static int command_payload_check(const char *input_path, const char *address,
@@ -1020,12 +1214,12 @@ static int command_payload_check(const char *input_path, const char *address,
 	int result = compare_payloads(input_path, address, baseline_path);
 
 	if (result < 0)
-		return 1;
+		return 2;
 
 	printf("Assessment: payload differences are not proof "
 	       "of impersonation.\n");
 
-	return 0;
+	return result;
 }
 
 static void usage(const char *program)
