@@ -1,1 +1,3 @@
 venv/
+/rogue
+*/__pycache__/
