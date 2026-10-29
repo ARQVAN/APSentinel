@@ -1,3 +1,6 @@
 venv/
 /rogue
 */__pycache__/
+
+# Local BLE captures and experiment data
+/data/*
