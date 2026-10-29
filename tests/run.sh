@@ -134,6 +134,56 @@ out=$("$BIN" payload-baseline "$TMP/baseline.tsv" "$A" \
 assert_contains "$out" "Unique payload signatures: 1" \
   "payload baseline contains expected signature"
 
+# Reject malformed v2 headers.
+sed '1s/$/0/' "$TMP/payload.tsv" >"$TMP/malformed-payload.tsv"
+
+if "$BIN" payload-check "$TMP/matching.tsv" "$A" \
+  "$TMP/malformed-payload.tsv" >"$TMP/malformed.out" 2>&1; then
+  status=0
+else
+  status=$?
+fi
+
+[ "$status" -eq 2 ] ||
+  fail "malformed payload baseline header returned $status instead of 2"
+pass "malformed payload baseline header is rejected"
+
+# Duplicate payload tokens must count only once per observation.
+make_dataset "$TMP/duplicate.tsv" "$A" 20 -50 0 1 4 '' \
+  "$UUID:aaaa;$UUID:aaaa"
+
+out=$("$BIN" payload-baseline "$TMP/duplicate.tsv" "$A" \
+  "$TMP/duplicate-payload.tsv" 2>&1) ||
+  fail "duplicate-token payload baseline"
+
+assert_contains "$out" "Unique payload signatures: 1" \
+  "duplicate tokens produce one unique signature"
+
+if grep -Fq "$(printf 'service_data_hex\t%s:aaaa\t20' "$UUID")" \
+  "$TMP/duplicate-payload.tsv"; then
+  pass "duplicate payload tokens count once per observation"
+else
+  cat "$TMP/duplicate-payload.tsv" >&2
+  fail "duplicate payload token count was not 20"
+fi
+
+# Duplicate sample-count metadata must be rejected.
+awk '
+  NR == 3 { print; print; next }
+  { print }
+' "$TMP/payload.tsv" >"$TMP/duplicate-samples.tsv"
+
+if "$BIN" payload-check "$TMP/matching.tsv" "$A" \
+  "$TMP/duplicate-samples.tsv" >"$TMP/duplicate-samples.out" 2>&1; then
+  status=0
+else
+  status=$?
+fi
+
+[ "$status" -eq 2 ] ||
+  fail "duplicate sample metadata returned $status instead of 2"
+pass "duplicate sample-count metadata is rejected"
+
 # 3. Matching input.
 out=$("$BIN" check "$TMP/matching.tsv" "$A" \
   "$TMP/fingerprint.tsv" "$TMP/payload.tsv" 2>&1) ||
@@ -142,6 +192,60 @@ assert_contains "$out" "NO OBSERVED DEVIATIONS" \
   "matching fingerprint and payload pass"
 assert_contains "$out" "not proof of impersonation" \
   "combined assessment includes its caveat"
+
+# 3a. Payload-check exit statuses.
+# Matching data must exit 0.
+if out=$("$BIN" payload-check "$TMP/matching.tsv" "$A" \
+  "$TMP/payload.tsv" 2>&1); then
+  status=0
+else
+  status=$?
+fi
+
+[ "$status" -eq 0 ] ||
+  fail "matching payload-check returned $status instead of 0"
+pass "matching payload-check exits 0"
+
+# Remove the payload from half the observations.
+# The signature remains present, but its frequency drops from 100% to 50%.
+awk -F '\t' 'BEGIN { OFS = "\t" }
+  NR == 1 { print; next }
+  NR % 2 == 0 { $8 = "" }
+  { print }
+' "$TMP/matching.tsv" >"$TMP/frequency.tsv"
+
+if out=$("$BIN" payload-check "$TMP/frequency.tsv" "$A" \
+  "$TMP/payload.tsv" 2>&1); then
+  status=0
+else
+  status=$?
+fi
+
+[ "$status" -eq 1 ] ||
+  fail "frequency-only payload change returned $status instead of 1"
+assert_contains "$out" "Frequency changes: 1" \
+  "frequency-only payload change is detected"
+pass "frequency-only payload-check exits 1"
+
+# An invalid baseline must return the error exit code 2.
+if "$BIN" payload-check "$TMP/matching.tsv" "$A" \
+  "$TMP/missing-payload.tsv" >"$TMP/payload-error.out" 2>&1; then
+  status=0
+else
+  status=$?
+fi
+
+[ "$status" -eq 2 ] ||
+  fail "invalid payload comparison returned $status instead of 2"
+pass "invalid payload comparison exits 2"
+
+# Combined check must report frequency-only payload deviations.
+out=$("$BIN" check "$TMP/frequency.tsv" "$A" \
+  "$TMP/fingerprint.tsv" "$TMP/payload.tsv" 2>&1) ||
+  fail "frequency-only combined check"
+
+assert_contains "$out" "PAYLOAD DEVIATION" \
+  "combined check detects frequency-only payload changes"
 
 # 4. Changed input.
 out=$("$BIN" check "$TMP/changed.tsv" "$A" \
