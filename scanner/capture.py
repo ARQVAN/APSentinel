@@ -33,6 +33,8 @@ async def main():
                     "manufacturer_bytes",
                     "service_count",
                     "service_data_bytes",
+                    "manufacturer_hex",
+                    "service_data_hex",
                 ]
             )
             file.flush()
@@ -58,6 +60,16 @@ async def main():
     def on_advertisement(device, advertisement):
         nonlocal count
 
+        manufacturer_hex = ";".join(
+            f"{company_id:04x}:{payload.hex()}"
+            for company_id, payload in sorted(advertisement.manufacturer_data.items())
+        )
+
+        service_data_hex = ";".join(
+            f"{uuid}:{payload.hex()}"
+            for uuid, payload in sorted(advertisement.service_data.items())
+        )
+
         row = [
             f"{time.time():.3f}",
             device.address,
@@ -65,6 +77,8 @@ async def main():
             sum(len(payload) for payload in advertisement.manufacturer_data.values()),
             len(advertisement.service_uuids),
             sum(len(payload) for payload in advertisement.service_data.values()),
+            manufacturer_hex,
+            service_data_hex,
         ]
 
         # The callback is synchronous, so schedule queue insertion
