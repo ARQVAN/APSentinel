@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RogueNet | BLE Monitoring</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <aside class="sidebar">
+        <h2>RogueNet<span>.</span></h2>
+        <p class="subtitle">BLE MONITORING</p>
+
+        <nav>
+            <a class="active" href="/">Overview</a>
+            <a href="#devices">Devices</a>
+            <a href="#correlation">Correlation</a>
+            <a href="#reports">Reports</a>
+        </nav>
+
+        <div class="sidebar-footer">APSentinel</div>
+    </aside>
+
+    <main>
+        <header>
+            <div>
+                <h1>Overview</h1>
+                <p>Bluetooth Low Energy device monitoring</p>
+            </div>
+
+            <select id="dataset">
+                <option value="live">Live capture (saved)</option>
+                <option value="observations">Observations</option>
+            </select>
+        </header>
+
+        <section class="metrics">
+            <article class="metric">
+                <p>Observations</p>
+                <h2 id="observations">—</h2>
+            </article>
+
+            <article class="metric">
+                <p>Unique addresses</p>
+                <h2 id="addresses">—</h2>
+            </article>
+
+            <article class="metric">
+                <p>Eligible devices</p>
+                <h2 id="eligible">—</h2>
+            </article>
+
+            <article class="metric">
+                <p>Shared signatures</p>
+                <h2 id="signatures">—</h2>
+            </article>
+        </section>
+
+        <section class="panel" id="rssi-panel">
+          <div class="panel-heading">
+              <h2>RSSI over time</h2>
+
+              <select id="rssi-device">
+                  <option value="">Select device</option>
+              </select>
+          </div>
+
+          <div class="chart-container">
+              <canvas id="rssi-chart"></canvas>
+          </div>
+        </section>
+
+        <section class="panel" id="devices">
+            <div class="panel-heading">
+                <h2>Observed devices</h2>
+                <span id="dataset-label">—</span>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>BLE address</th>
+                            <th>Samples</th>
+                            <th>Mean RSSI</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="device-list"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" id="reports">
+            <h2>Evaluation report</h2>
+            <pre id="report">Loading...</pre>
+        </section>
+
+        <section class="panel" id="correlation">
+            <h2>Payload correlation</h2>
+            <pre id="correlation-output">Loading...</pre>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
