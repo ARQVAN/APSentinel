@@ -4,3 +4,7 @@ venv/
 
 # Local BLE captures and experiment data
 /data/*
+
+# Dashboard Baselines
+dashboard/baselines/*
+!dashboard/baselines/.gitkeep
