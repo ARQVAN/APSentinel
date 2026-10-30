@@ -29,9 +29,12 @@
                 <p>Bluetooth Low Energy device monitoring</p>
             </div>
 
+            <label for="dataset">Dataset</label>
             <select id="dataset">
                 <option value="live">Live capture (saved)</option>
                 <option value="observations">Observations</option>
+                <option value="phone_baseline">Phone baseline capture</option>
+                <option value="phone_toggle">Phone toggle capture</option>
             </select>
         </header>
 
@@ -61,6 +64,7 @@
           <div class="panel-heading">
               <h2>RSSI over time</h2>
 
+              <label for="rssi-device">Device</label>
               <select id="rssi-device">
                   <option value="">Select device</option>
               </select>
@@ -90,6 +94,116 @@
                     <tbody id="device-list"></tbody>
                 </table>
             </div>
+        </section>
+
+        <section class="panel" id="device-explorer" hidden>
+            <div class="panel-heading">
+                <div>
+                    <h2 id="device-title">Device Explorer</h2>
+                    <span id="device-subtitle"></span>
+                </div>
+
+                <button id="close-device">Back to overview</button>
+            </div>
+
+            <section class="metrics">
+                <article class="metric">
+                    <p>Mean RSSI</p>
+                    <h2 id="device-mean-rssi">—</h2>
+                </article>
+
+                <article class="metric">
+                    <p>RSSI standard deviation</p>
+                    <h2 id="device-rssi-stddev">—</h2>
+                </article>
+
+                <article class="metric">
+                    <p>Manufacturer bytes (mean)</p>
+                    <h2 id="device-manufacturer-bytes">—</h2>
+                </article>
+
+                <article class="metric">
+                    <p>Service data bytes (mean)</p>
+                    <h2 id="device-service-bytes">—</h2>
+                </article>
+            </section>
+
+            <div class="device-meta">
+                <p>First observed: <span id="device-first-seen">—</span></p>
+                <p>Last observed: <span id="device-last-seen">—</span></p>
+                <p>Mean service count: <span id="device-service-count">—</span></p>
+                <p>Samples: <span id="device-samples">—</span></p>
+            </div>
+            <section class="panel" id="baseline-panel">
+                <h2>Fingerprint Baseline Comparison</h2>
+
+                <p class="baseline-description">
+                    Generate a reference fingerprint or compare this device
+                    against an existing baseline.
+                </p>
+
+                <div class="baseline-controls">
+                    <label for="baseline-dataset">
+                        Baseline source dataset
+                    </label>
+
+                    <select id="baseline-dataset">
+                        <option value="live">Live capture</option>
+                        <option value="observations">Observations</option>
+                        <option value="phone_baseline">Phone baseline capture</option>
+                        <option value="phone_toggle">Phone toggle capture</option>
+                    </select>
+
+                    <button id="create-baseline">
+                        Create baseline
+                    </button>
+
+                    <button id="compare-baseline">
+                        Compare fingerprint
+                    </button>
+                </div>
+
+                <div id="baseline-status" hidden></div>
+
+                <pre id="baseline-output">No comparison performed yet.</pre>
+            </section>
+
+            <section class="panel">
+                <h2>RSSI history</h2>
+                <div class="chart-container">
+                    <canvas id="device-rssi-chart"></canvas>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Manufacturer payload signatures</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Signature</th>
+                                <th>Observations</th>
+                            </tr>
+                        </thead>
+                        <tbody id="manufacturer-signatures"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Service data signatures</h2>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Signature</th>
+                                <th>Observations</th>
+                            </tr>
+                        </thead>
+                        <tbody id="service-signatures"></tbody>
+                    </table>
+                </div>
+            </section>
         </section>
 
         <section class="panel" id="reports">

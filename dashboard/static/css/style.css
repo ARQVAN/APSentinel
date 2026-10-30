@@ -176,6 +176,16 @@ pre {
 }
 
 @media (max-width: 850px) {
+    header {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header select {
+      width: 100%;
+    }
+
     .sidebar {
         position: static;
         width: 100%;
@@ -209,4 +219,143 @@ pre {
     position: relative;
     height: 320px;
     width: 100%;
+}
+
+.clickable {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.clickable:hover {
+    background: #1e293b;
+}
+
+.device-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 20px;
+    margin: 20px 0;
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.device-meta span {
+    color: #e5e7eb;
+}
+
+#close-device {
+    padding: 9px 14px;
+    color: #e5e7eb;
+    background: #1e293b;
+    border: 1px solid #303b4c;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+#close-device:hover {
+    background: #334155;
+}
+
+#device-explorer .panel {
+    margin-top: 20px;
+}
+
+#device-explorer td:first-child {
+    overflow-wrap: anywhere;
+    font-family: monospace;
+}
+
+@media (max-width: 650px) {
+    .device-meta {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    main {
+        padding: 14px;
+    }
+
+    .metrics {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .panel {
+        padding: 16px;
+    }
+
+    .panel-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .chart-container {
+        height: 260px;
+    }
+}
+
+.baseline-description {
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.baseline-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.baseline-controls label {
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.baseline-controls button {
+    padding: 10px 14px;
+    color: #e5e7eb;
+    background: #1e293b;
+    border: 1px solid #303b4c;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.baseline-controls button:hover {
+    background: #334155;
+}
+
+.baseline-controls button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+#baseline-status {
+    padding: 12px;
+    margin: 15px 0;
+    border-radius: 7px;
+    background: #1e293b;
+    font-size: 13px;
+}
+
+#baseline-status.success {
+    color: #34d399;
+}
+
+#baseline-status.warning {
+    color: #fbbf24;
+}
+
+#baseline-status.error {
+    color: #f87171;
+}
+
+.clickable:focus-visible,
+button:focus-visible,
+select:focus-visible,
+nav a:focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 3px;
 }
